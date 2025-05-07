@@ -1,6 +1,6 @@
 import express from "express";
 import userRoutes from "./users.js";
-import transitions from "./transitions.js";
+import transactions from "./transactions.js";
 const router = express.Router();
 
 // Root Api route
@@ -9,6 +9,6 @@ router.get("/", (req, res) => {
 });
 
 router.use("/users", userRoutes); // Users Api routes
-router.use("/transitions", transitions); // transitions Api routes
+router.use("/transactions", transactions); // transitions Api routes
 
 export default router;

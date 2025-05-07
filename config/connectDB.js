@@ -22,7 +22,7 @@ async function connectDB() {
 
     collections = {
       users: db.collection("users"),
-      transitions: db.collection("transitions"),
+      transactions: db.collection("transactions"),
     };
 
     return collections;

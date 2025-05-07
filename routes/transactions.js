@@ -3,11 +3,11 @@ import { collections, connectDB } from "../config/connectDB.js";
 const router = express.Router();
 
 // Initialize all collections
-let transitionCollection;
+let transactionCollection;
 async function initTransitionCollection() {
   try {
     await connectDB();
-    transitionCollection = collections.transitions;
+    transactionCollection = collections.transactions;
   } catch (error) {
     console.error("Error initializing transitions collection:", error);
   }
@@ -15,14 +15,14 @@ async function initTransitionCollection() {
 initTransitionCollection();
 
 router.post("/", async (req, res) => {
-  const transition = req.body;
-//   console.log(transition);
-  const result = await transitionCollection.insertOne(transition);
+  const transaction = req.body;
+  //   console.log(transition);
+  const result = await transactionCollection.insertOne(transaction);
   res.send(result);
 });
 
 router.get("/", async (req, res) => {
-  const result = await transitionCollection.find().toArray();
+  const result = await transactionCollection.find().toArray();
   res.send(result);
 });
 

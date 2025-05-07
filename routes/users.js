@@ -1,5 +1,5 @@
 import express from "express";
-import { connectDB } from "../config/connectDB.js";
+import { collections, connectDB } from "../config/connectDB.js";
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
@@ -46,6 +46,18 @@ initCollection().catch((err) => {
   process.exit(1);
 });
 await initCollection();
+
+// Initialize transitionCollection
+let transactionsCollection;
+async function initTransactionCollection() {
+  try {
+    await connectDB();
+    transactionsCollection = collections.transactions;
+  } catch (error) {
+    console.error("Error initializing transactions collection:", error);
+  }
+}
+initTransactionCollection();
 
 // Hashing password
 const hashPassword = async (password) => {
@@ -226,10 +238,48 @@ router.get("/", async (req, res) => {
 
 // get single user data
 router.get("/profile/:id", async (req, res) => {
-  const id = req.params.id;
-  const filter = { _id: new ObjectId(id) };
-  const result = await usersCollection.findOne(filter);
-  res.send(result);
+  try {
+    const id = req.params.id;
+    // Validate ObjectId
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid or missing user ID.",
+      });
+    }
+
+    // Create filter for user
+    const userFilter = { _id: new ObjectId(id) };
+
+    // Fetch user from usersCollection
+    const user = await usersCollection.findOne(userFilter);
+    if (!user) {
+      return res.status(404).send({
+        message: "User not found.",
+      });
+    }
+
+    // Fetch transactions from transactionCollection
+    const transactionFilter = { memberId: id };
+    const transactions = await transactionsCollection
+      .find(transactionFilter)
+      .sort({ _id: -1 })
+      .toArray();
+    // Send response with consistent structure
+    res.status(200).send({
+      result: user,
+      transactions: transactions,
+      message: "User profile and transitions retrieved successfully.",
+    });
+  } catch (error) {
+    // Log error for debugging
+    console.error(`Error fetching profile for ID ${req.params.id}:`, error);
+
+    // Return error with consistent structure
+    res.status(500).send({
+      message:
+        error.message || "Failed to retrieve user profile. Please try again.",
+    });
+  }
 });
 
 export default router;
