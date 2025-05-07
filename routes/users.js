@@ -1,45 +1,235 @@
 import express from "express";
 import { connectDB } from "../config/connectDB.js";
+import admin from "firebase-admin";
+import dotenv from "dotenv";
+import bcrypt from "bcrypt";
+import { ObjectId } from "mongodb";
 
+dotenv.config();
+const router = express.Router();
+const saltRounds = 10;
 
-const router = express.Router()
+// Initialize Firebase Admin
+const serviceAccount = {
+  type: process.env.TYPE,
+  project_id: process.env.PROJECT_ID,
+  private_key_id: process.env.PRIVATE_KEY_ID,
+  private_key: process.env.PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  client_email: process.env.CLIENT_EMAIL,
+  client_id: process.env.CLIENT_ID,
+  auth_uri: process.env.AUTH_URI,
+};
 
+// Initialize MongoDB usersCollection
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
-// initialize userCollection
-let userCollection
+const db = admin.firestore();
+
+let usersCollection;
 async function initCollection() {
-    const collections = await connectDB()
-    userCollection = collections.users
+  try {
+    const collections = await connectDB();
+    if (!collections?.users) {
+      throw new Error("Users collection not initialized.");
+    }
+    usersCollection = collections.users;
+  } catch (error) {
+    console.error("Failed to initialize users collection:", error.message);
+    throw error;
+  }
 }
 
-await initCollection()
+initCollection().catch((err) => {
+  console.error("Initialization failed:", err);
+  process.exit(1);
+});
+await initCollection();
 
-// post new user into db
-// Post new user in db --->
-router.post("/", async (req, res) => {
+// Hashing password
+const hashPassword = async (password) => {
+  return await bcrypt.hash(password, saltRounds);
+};
+
+// Assign-User
+router.post("/assign-user", async (req, res) => {
+  try {
     const user = req.body;
     const password = user?.password;
-    // console.log(user);
 
-    // check if user is already exists--->
+    // Check if user email already exists in MongoDB
     const query = { email: user.email };
-    const isExist = await userCollection.findOne(query);
+    const isExist = await usersCollection.findOne(query);
     if (isExist) {
-        return res.send(isExist);
+      return res.status(400).send({
+        message: "A user with this email already exists.",
+        user: isExist,
+      });
     }
-    // if new user save data in db --->
-    const result = await userCollection.insertOne({
-        role: "user",
-        ...user,
-    });
+
+    let hashedPassword = null;
+    if (password) {
+      hashedPassword = await hashPassword(password);
+    }
+
+    // Post user in Firebase Authentication
+    let firebaseResult;
+    try {
+      firebaseResult = await admin.auth().createUser({
+        email: user.email,
+        password: password,
+        displayName: user.name,
+        photoURL: user.photo,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .send({ message: `Firebase Error: ${error.message}` });
+    }
+
+    // Prepare user info for MongoDB
+    const userInfo = {
+      role: user?.role,
+      email: user?.email,
+      name: user?.name,
+      password: hashedPassword,
+      photo: user?.photo,
+      phoneNumber: user?.phoneNumber,
+      uid: firebaseResult?.uid,
+      createdAt: new Date(firebaseResult?.metadata?.creationTime).toISOString(),
+      lastLoginAt: firebaseResult?.metadata?.lastSignInTime
+        ? new Date(firebaseResult?.metadata?.lastSignInTime).toISOString()
+        : null,
+      createdBy: "assigned",
+    };
+
+    // Post user in MongoDB
+    const mongoResult = await usersCollection.insertOne(userInfo);
+
     res.send({
-        data: result,
-        message: "User Posted In DB Successfully",
+      firebase: firebaseResult,
+      firestore: { insertedId: firebaseResult.uid },
+      message: "User Created Successfully",
     });
+  } catch (error) {
+    res.status(500).send({ message: error.message });
+  }
+});
+
+// Post new user in db --->
+router.post("/", async (req, res) => {
+  const user = req.body;
+  const password = user?.password;
+  // console.log(user);
+
+  // check if user is already exists--->
+  const query = { email: user.email };
+  const isExist = await usersCollection.findOne(query);
+  if (isExist) {
+    return res.send(isExist);
+  }
+  // if new user save data in db --->
+  const result = await usersCollection.insertOne({
+    role: "user",
+    ...user,
+  });
+  res.send({
+    data: result,
+    message: "User Posted In DB Successfully",
+  });
 }); // Api endpoint -> /users
 
+// delete user
 
+router.delete("/delete-user/:email", async (req, res) => {
+  try {
+    const email = req.params.email;
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return res.status(400).send({
+        message: "Invalid or missing email address.",
+      });
+    }
 
+    // Get User from MongoDB
+    const user = await usersCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).send({
+        message: "User not found in database.",
+      });
+    }
 
-export default router
+    // Get User UID
+    const uid = user.uid;
+    if (!uid) {
+      return res.status(400).send({
+        message: "User UID not found in database.",
+      });
+    }
+
+    // Delete User from Firebase Authentication
+    await admin.auth().deleteUser(uid);
+
+    // Delete User from MongoDB
+    const result = await usersCollection.deleteOne({ email });
+
+    // Check if deletion was successful
+    if (result.deletedCount === 0) {
+      return res.status(500).send({
+        message: "Failed to delete user from MongoDB.",
+      });
+    }
+
+    // Log success for debugging
+    console.log(`User deleted: ${email}, UID: ${uid}`);
+
+    // Return consistent response structure
+    res.status(200).send({
+      firestore: {
+        deletedId: uid,
+      },
+      message: "User Deleted Successfully from Firebase & MongoDB",
+    });
+  } catch (error) {
+    // Log error for debugging
+    console.error(`Error deleting user ${req.params.email}:`, error);
+
+    // Return error with consistent structure
+    res.status(500).send({
+      message: error.message || "Failed to delete user. Please try again.",
+    });
+  }
+});
+
+router.get("/", async (req, res) => {
+  let query = {};
+  const role = req.query.role;
+  const sort = req.query.sort;
+  const search = req.query.search;
+  if (role) query.role = role;
+  if (search) query.name = { $regex: search, $options: "i" };
+
+  let sortOption = { createdAt: -1 };
+
+  if (sort) {
+    const [field, order] = sort.split("-");
+    sortOption = {
+      [field]: order === "asc" ? 1 : -1,
+    };
+  }
+  const result = await usersCollection.find(query).toArray();
+  res.send(result);
+});
+
+// get single user data
+router.get("/profile/:id", async (req, res) => {
+  const id = req.params.id;
+  const filter = { _id: new ObjectId(id) };
+  const result = await usersCollection.findOne(filter);
+  res.send(result);
+});
+
+export default router;
