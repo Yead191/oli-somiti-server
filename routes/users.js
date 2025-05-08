@@ -216,13 +216,21 @@ router.delete("/delete-user/:email", async (req, res) => {
   }
 });
 
+//  get user data
 router.get("/", async (req, res) => {
   let query = {};
   const role = req.query.role;
   const sort = req.query.sort;
   const search = req.query.search;
+  const contributionFilter = req.query.filter;
+
   if (role) query.role = role;
-  if (search) query.name = { $regex: search, $options: "i" };
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { phoneNumber: { $regex: search, $options: "i" } },
+    ];
+  }
 
   let sortOption = { createdAt: -1 };
 
@@ -232,8 +240,102 @@ router.get("/", async (req, res) => {
       [field]: order === "asc" ? 1 : -1,
     };
   }
-  const result = await usersCollection.find(query).toArray();
-  res.send(result);
+
+  try {
+    const pipeline = [
+      { $match: query },
+      {
+        $lookup: {
+          from: "transactions",
+          localField: "email",
+          foreignField: "memberEmail",
+          as: "transactions",
+        },
+      },
+      {
+        $addFields: {
+          totalContributions: {
+            $subtract: [
+              {
+                $sum: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$transactions",
+                        as: "t",
+                        cond: { $eq: ["$$t.type", "Deposit"] },
+                      },
+                    },
+                    as: "d",
+                    in: "$$d.amount",
+                  },
+                },
+              },
+              {
+                $sum: {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: "$transactions",
+                        as: "t",
+                        cond: { $eq: ["$$t.type", "Withdraw"] },
+                      },
+                    },
+                    as: "w",
+                    in: "$$w.amount",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    // 🔍 Filter based on totalContributions if filter is provided
+    if (contributionFilter) {
+      let min = 0;
+      let max = Infinity;
+
+      if (contributionFilter.includes("-")) {
+        const [minStr, maxStr] = contributionFilter.split("-");
+        min = parseInt(minStr);
+        max = parseInt(maxStr);
+      } else if (contributionFilter.endsWith("+")) {
+        min = parseInt(contributionFilter.replace("+", ""));
+      }
+
+      pipeline.push({
+        $match: {
+          totalContributions: { $gte: min, $lte: max },
+        },
+      });
+    }
+
+    pipeline.push(
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          photo: 1,
+          email: 1,
+          phoneNumber: 1,
+          createdAt: 1,
+          totalContributions: 1,
+        },
+      },
+      { $sort: sortOption }
+    );
+
+    const usersWithContributions = await usersCollection
+      .aggregate(pipeline)
+      .toArray();
+
+    res.send(usersWithContributions);
+  } catch (error) {
+    console.error("Aggregation error:", error);
+    res.status(500).send({ message: "Server error while fetching users." });
+  }
 });
 
 // get single user data
