@@ -319,6 +319,7 @@ router.get("/", async (req, res) => {
           name: 1,
           photo: 1,
           email: 1,
+          role: 1,
           phoneNumber: 1,
           createdAt: 1,
           totalContributions: 1,
