@@ -71,6 +71,17 @@ router.get("/", async (req, res) => {
       .toArray();
 
     // Count admins and members from userCollection
+    const totalTransactions = await transactionCollection.countDocuments();
+    // console.log(totalTransactions);
+    const totalDepositCount = await transactionCollection.countDocuments({
+      type: "Deposit",
+    });
+    const totalWithdrawalCount = await transactionCollection.countDocuments({
+      type: "Withdraw",
+    });
+    const totalPenalties = await transactionCollection.countDocuments({
+      type: "Penalty",
+    });
     const adminCount = await userCollection.countDocuments({ role: "admin" });
     const memberCountFromUsers = await userCollection.countDocuments({
       role: "member",
@@ -87,6 +98,10 @@ router.get("/", async (req, res) => {
       currentBalance: transactionSummary?.currentBalance || 0,
       totalMembers,
       totalAdmins: adminCount || 0,
+      totalTransactions: totalTransactions || 0,
+      totalDepositCount: totalDepositCount || 0,
+      totalWithdrawalCount: totalWithdrawalCount || 0,
+      totalPenalties: totalPenalties || 0,
     };
 
     res.send(result);
@@ -104,7 +119,7 @@ router.get("/admin-report", async (req, res) => {
       .aggregate([
         {
           $lookup: {
-            from: "users", 
+            from: "users",
             let: { approvedByEmail: "$approvedByEmail" },
             pipeline: [
               {
@@ -115,7 +130,7 @@ router.get("/admin-report", async (req, res) => {
               },
               {
                 $project: {
-                  photo: 1, 
+                  photo: 1,
                 },
               },
             ],
@@ -125,7 +140,7 @@ router.get("/admin-report", async (req, res) => {
         {
           $unwind: {
             path: "$adminData",
-            preserveNullAndEmptyArrays: true, 
+            preserveNullAndEmptyArrays: true,
           },
         },
         {
@@ -133,7 +148,7 @@ router.get("/admin-report", async (req, res) => {
             _id: {
               name: "$approvedBy",
               email: "$approvedByEmail",
-              photo: "$adminData.photo", 
+              photo: "$adminData.photo",
             },
             totalDeposits: {
               $sum: { $cond: [{ $eq: ["$type", "Deposit"] }, "$amount", 0] },
@@ -159,7 +174,7 @@ router.get("/admin-report", async (req, res) => {
             totalWithdrawals: 1,
           },
         },
-        { $sort: { adminName: 1 } }, 
+        { $sort: { adminName: 1 } },
       ])
       .toArray();
 

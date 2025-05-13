@@ -114,6 +114,7 @@ router.post("/assign-user", async (req, res) => {
         ? new Date(firebaseResult?.metadata?.lastSignInTime).toISOString()
         : null,
       createdBy: "assigned",
+      isActive: true,
     };
 
     // Post user in MongoDB
@@ -223,7 +224,11 @@ router.get("/", async (req, res) => {
   const sort = req.query.sort;
   const search = req.query.search;
   const contributionFilter = req.query.filter;
+  const active = req.query.active;
 
+  if (active) {
+    query.isActive = true;
+  }
   if (role) query.role = role;
   if (search) {
     query.$or = [
@@ -382,6 +387,29 @@ router.get("/profile/:id", async (req, res) => {
       message:
         error.message || "Failed to retrieve user profile. Please try again.",
     });
+  }
+});
+
+// Example: PATCH /users/:id
+router.patch("/update-status/:id", async (req, res) => {
+  const { id } = req.params;
+  const { role, isActive } = req.body;
+  console.log(role, isActive);
+  try {
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          ...(role && { role }),
+          ...(typeof isActive === "boolean" && { isActive }),
+        },
+      }
+    );
+
+    res.send(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ error: "Failed to update user" });
   }
 });
 
