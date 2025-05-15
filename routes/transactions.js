@@ -30,6 +30,11 @@ router.get("/", async (req, res) => {
   const method = req.query.method;
   const startDate = req.query.startDate;
   const endDate = req.query.endDate;
+  const limit = parseInt(req.query.limit);
+  const page = parseInt(req.query.page) || 1;
+  const skip = (page - 1) * limit;
+
+  // console.log(page);
   const query = {};
   if (search) {
     query.$or = [{ memberName: { $regex: search, $options: "i" } }];
@@ -46,11 +51,19 @@ router.get("/", async (req, res) => {
     if (startDate) query.date.$gte = startDate;
     if (endDate) query.date.$lte = endDate;
   }
+  const total = await transactionCollection.countDocuments(query);
   const result = await transactionCollection
     .find(query)
     .sort({ _id: -1 })
+    .skip(skip)
+    .limit(limit)
     .toArray();
-  res.send(result);
+  res.send({
+    transactions: result,
+    totalPages: Math.ceil(total / limit),
+    currentPage: page,
+    totalItems: total,
+  });
 });
 
 // delete transaction
