@@ -89,6 +89,9 @@ router.get("/summary", async (req, res) => {
             totalWithdrawals: {
               $sum: { $cond: [{ $eq: ["$type", "Withdraw"] }, "$amount", 0] },
             },
+            totalPenalties: {
+              $sum: { $cond: [{ $eq: ["$type", "Penalty"] }, "$amount", 0] },
+            },
             memberIds: { $addToSet: "$memberId" },
           },
         },
@@ -97,6 +100,7 @@ router.get("/summary", async (req, res) => {
           $project: {
             totalDeposits: 1,
             totalWithdrawals: 1,
+            totalPenalties: 1,
             balance: { $subtract: ["$totalDeposits", "$totalWithdrawals"] },
             memberCount: { $size: "$memberIds" },
           },
@@ -222,6 +226,7 @@ router.get("/summary", async (req, res) => {
     const result = {
       totalDeposits: summary?.totalDeposits || 0,
       totalWithdrawals: summary?.totalWithdrawals || 0,
+      totalPenalties: summary?.totalPenalties || 0,
       balance: summary?.balance || 0,
       memberCount: summary?.memberCount || 0,
       depositsByCategory,

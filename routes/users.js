@@ -393,20 +393,55 @@ router.get("/profile/:id", async (req, res) => {
 // Example: PATCH /users/:id
 router.patch("/update-status/:id", async (req, res) => {
   const { id } = req.params;
-  const { role, isActive } = req.body;
-  console.log(role, isActive);
+  const { role, isActive, name, phoneNumber } = req.body;
+
   try {
+    // Fetch the user from MongoDB to get the email
+    const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+    if (!user) {
+      return res.status(404).send({ error: "User not found in MongoDB" });
+    }
+    if (!user.email) {
+      return res.status(400).send({ error: "User email not found in MongoDB" });
+    }
+
+    // Prepare MongoDB update object
+    const updateFields = {
+      ...(role && { role }),
+      ...(typeof isActive === "boolean" && { isActive }),
+      ...(name && { name }),
+      ...(phoneNumber && { phoneNumber }),
+    };
+
+    // Update MongoDB
     const result = await usersCollection.updateOne(
       { _id: new ObjectId(id) },
-      {
-        $set: {
-          ...(role && { role }),
-          ...(typeof isActive === "boolean" && { isActive }),
-        },
-      }
+      { $set: updateFields }
     );
 
-    res.send(result);
+    // If name is provided, update Firebase Authentication displayName
+    if (name) {
+      try {
+        // Get Firebase user by email
+        const firebaseUser = await admin.auth().getUserByEmail(user.email);
+        await admin.auth().updateUser(firebaseUser.uid, {
+          displayName: name,
+        });
+      } catch (firebaseError) {
+        console.error("Firebase update error:", firebaseError);
+        return res
+          .status(500)
+          .send({
+            error: `Failed to update Firebase user: ${firebaseError.message}`,
+          });
+      }
+    }
+
+    if (result.modifiedCount > 0) {
+      res.send(result);
+    } else {
+      res.send({ modifiedCount: 0, message: "No changes made" });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).send({ error: "Failed to update user" });

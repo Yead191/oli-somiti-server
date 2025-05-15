@@ -47,12 +47,11 @@ router.get("/", async (req, res) => {
             },
             totalWithdrawals: {
               $sum: {
-                $cond: [
-                  { $in: ["$type", ["Withdraw", "Withdraw"]] },
-                  "$amount",
-                  0,
-                ],
+                $cond: [{ $in: ["$type", ["Withdraw"]] }, "$amount", 0],
               },
+            },
+            totalPenalties: {
+              $sum: { $cond: [{ $eq: ["$type", "Penalty"] }, "$amount", 0] },
             },
             memberIds: { $addToSet: "$memberId" },
           },
@@ -61,9 +60,13 @@ router.get("/", async (req, res) => {
           $project: {
             totalDeposits: 1,
             totalWithdrawals: 1,
+            totalPenalties: 1,
             totalMembers: { $size: "$memberIds" },
             currentBalance: {
-              $subtract: ["$totalDeposits", "$totalWithdrawals"],
+              $add: [
+                { $subtract: ["$totalDeposits", "$totalWithdrawals"] },
+                "$totalPenalties",
+              ],
             },
           },
         },
@@ -79,7 +82,7 @@ router.get("/", async (req, res) => {
     const totalWithdrawalCount = await transactionCollection.countDocuments({
       type: "Withdraw",
     });
-    const totalPenalties = await transactionCollection.countDocuments({
+    const totalPenaltyCount = await transactionCollection.countDocuments({
       type: "Penalty",
     });
     const adminCount = await userCollection.countDocuments({ role: "admin" });
@@ -95,13 +98,14 @@ router.get("/", async (req, res) => {
     const result = {
       totalDeposits: transactionSummary?.totalDeposits || 0,
       totalWithdrawals: transactionSummary?.totalWithdrawals || 0,
+      totalPenalties: transactionSummary?.totalPenalties || 0,
       currentBalance: transactionSummary?.currentBalance || 0,
       totalMembers,
       totalAdmins: adminCount || 0,
       totalTransactions: totalTransactions || 0,
       totalDepositCount: totalDepositCount || 0,
       totalWithdrawalCount: totalWithdrawalCount || 0,
-      totalPenalties: totalPenalties || 0,
+      totalPenaltyCount: totalPenaltyCount || 0,
     };
 
     res.send(result);
@@ -153,6 +157,9 @@ router.get("/admin-report", async (req, res) => {
             totalDeposits: {
               $sum: { $cond: [{ $eq: ["$type", "Deposit"] }, "$amount", 0] },
             },
+            totalPenalties: {
+              $sum: { $cond: [{ $eq: ["$type", "Penalty"] }, "$amount", 0] },
+            },
             totalWithdrawals: {
               $sum: {
                 $cond: [
@@ -172,6 +179,7 @@ router.get("/admin-report", async (req, res) => {
             adminImage: "$_id.photo",
             totalDeposits: 1,
             totalWithdrawals: 1,
+            totalPenalties: 1,
           },
         },
         { $sort: { adminName: 1 } },
@@ -186,6 +194,9 @@ router.get("/admin-report", async (req, res) => {
             _id: null,
             totalDepositsApproved: {
               $sum: { $cond: [{ $eq: ["$type", "Deposit"] }, "$amount", 0] },
+            },
+            totalPenaltiesApproved: {
+              $sum: { $cond: [{ $eq: ["$type", "Penalty"] }, "$amount", 0] },
             },
             totalWithdrawalsApproved: {
               $sum: {
@@ -203,6 +214,7 @@ router.get("/admin-report", async (req, res) => {
             _id: 0,
             totalDepositsApproved: 1,
             totalWithdrawalsApproved: 1,
+            totalPenaltiesApproved: 1,
           },
         },
       ])
@@ -212,6 +224,7 @@ router.get("/admin-report", async (req, res) => {
     const result = {
       totalDepositsApproved: overallTotals?.totalDepositsApproved || 0,
       totalWithdrawalsApproved: overallTotals?.totalWithdrawalsApproved || 0,
+      totalPenaltiesApproved: overallTotals?.totalPenaltiesApproved || 0,
       admins: adminReport || [],
     };
 
