@@ -364,7 +364,7 @@ router.get("/profile/:id?", async (req, res) => {
       $or: [
         isValidId ? { _id: new ObjectId(id) } : null,
         email ? { email: email } : null,
-      ].filter(Boolean), 
+      ].filter(Boolean),
     };
 
     // Fetch user from usersCollection
@@ -380,7 +380,7 @@ router.get("/profile/:id?", async (req, res) => {
       $or: [
         isValidId ? { memberId: id } : null,
         email ? { memberEmail: email } : null,
-      ].filter(Boolean), 
+      ].filter(Boolean),
     };
     const transactions = await transactionsCollection
       .find(transactionFilter)
@@ -404,10 +404,10 @@ router.get("/profile/:id?", async (req, res) => {
   }
 });
 
-// Example: PATCH /users/:id
+//  PATCH /users/update-status/:id
 router.patch("/update-status/:id", async (req, res) => {
   const { id } = req.params;
-  const { role, isActive, name, phoneNumber } = req.body;
+  let { role, isActive, name, phoneNumber, photoURL } = req.body;
 
   try {
     // Fetch the user from MongoDB to get the email
@@ -419,13 +419,25 @@ router.patch("/update-status/:id", async (req, res) => {
       return res.status(400).send({ error: "User email not found in MongoDB" });
     }
 
+    // Convert isActive to boolean if it's a string
+    if (typeof isActive === "string") {
+      isActive = isActive.toLowerCase() === "true";
+    }
+
     // Prepare MongoDB update object
-    const updateFields = {
-      ...(role && { role }),
-      ...(typeof isActive === "boolean" && { isActive }),
-      ...(name && { name }),
-      ...(phoneNumber && { phoneNumber }),
-    };
+    const updateFields = {};
+    if (role && role !== user.role) updateFields.role = role;
+    if (typeof isActive === "boolean" && isActive !== user.isActive)
+      updateFields.isActive = isActive;
+    if (name && name !== user.name) updateFields.name = name;
+    if (phoneNumber && phoneNumber !== user.phoneNumber)
+      updateFields.phoneNumber = phoneNumber;
+    if (photoURL) updateFields.photo = photoURL;
+
+    // If no fields to update, return early
+    if (Object.keys(updateFields).length === 0) {
+      return res.send({ modifiedCount: 0, message: "No changes to update" });
+    }
 
     // Update MongoDB
     const result = await usersCollection.updateOne(
@@ -433,14 +445,17 @@ router.patch("/update-status/:id", async (req, res) => {
       { $set: updateFields }
     );
 
-    // If name is provided, update Firebase Authentication displayName
-    if (name) {
+    // Update Firebase Authentication
+    if (name || photoURL) {
       try {
-        // Get Firebase user by email
         const firebaseUser = await admin.auth().getUserByEmail(user.email);
-        await admin.auth().updateUser(firebaseUser.uid, {
-          displayName: name,
-        });
+        const firebaseUpdate = {};
+        if (name && name !== user.name) firebaseUpdate.displayName = name;
+        if (photoURL) firebaseUpdate.photoURL = photoURL;
+
+        if (Object.keys(firebaseUpdate).length > 0) {
+          await admin.auth().updateUser(firebaseUser.uid, firebaseUpdate);
+        }
       } catch (firebaseError) {
         console.error("Firebase update error:", firebaseError);
         return res.status(500).send({
@@ -452,11 +467,33 @@ router.patch("/update-status/:id", async (req, res) => {
     if (result.modifiedCount > 0) {
       res.send(result);
     } else {
-      res.send({ modifiedCount: 0, message: "No changes made" });
+      console.log("No changes applied in MongoDB");
+      res.send({ modifiedCount: 0, message: "No changes applied" });
     }
   } catch (err) {
-    console.error(err);
+    console.error("Update error:", err);
     res.status(500).send({ error: "Failed to update user" });
+  }
+});
+
+router.patch("/update-profile", async (req, res) => {
+  const email = req.query.email;
+  const filter = { email: email };
+  const updateUser = req.body;
+  // console.log(email);
+  // console.log(updateUser);
+  const updatedDoc = {
+    $set: {
+      name: updateUser.name,
+      phoneNumber: updateUser.phoneNumber,
+      photo: updateUser.photo,
+    },
+  };
+  try {
+    const result = await usersCollection.updateOne(filter, updatedDoc);
+    res.send(result);
+  } catch (err) {
+    console.log(err.message, "error on updating profile");
   }
 });
 
