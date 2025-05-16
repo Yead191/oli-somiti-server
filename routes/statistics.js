@@ -134,6 +134,7 @@ router.get("/admin-report", async (req, res) => {
               },
               {
                 $project: {
+                  name: 1,
                   photo: 1,
                 },
               },
@@ -150,7 +151,7 @@ router.get("/admin-report", async (req, res) => {
         {
           $group: {
             _id: {
-              name: "$approvedBy",
+              name: "$adminData.name",
               email: "$approvedByEmail",
               photo: "$adminData.photo",
             },

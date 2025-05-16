@@ -475,7 +475,7 @@ router.patch("/update-status/:id", async (req, res) => {
     res.status(500).send({ error: "Failed to update user" });
   }
 });
-
+// update profile
 router.patch("/update-profile", async (req, res) => {
   const email = req.query.email;
   const filter = { email: email };
@@ -496,5 +496,19 @@ router.patch("/update-profile", async (req, res) => {
     console.log(err.message, "error on updating profile");
   }
 });
+
+// Update user lastLoginAt --->
+router.patch("/last-login-at/:email", async (req, res) => {
+  const email = req.params.email;
+  const { lastLoginAt } = req.body;
+  const filter = { email };
+  const updatedUserInfo = {
+    $set: {
+      lastLoginAt: lastLoginAt,
+    },
+  };
+  const result = await usersCollection.updateOne(filter, updatedUserInfo);
+  res.send({ data: result, message: "lastLoginAt Time updated successfully" });
+}); // Api endpoint -> /users/update-profile/:email
 
 export default router;
