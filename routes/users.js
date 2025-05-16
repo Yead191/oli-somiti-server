@@ -345,18 +345,27 @@ router.get("/", async (req, res) => {
 });
 
 // get single user data
-router.get("/profile/:id", async (req, res) => {
+router.get("/profile/:id?", async (req, res) => {
   try {
     const id = req.params.id;
+    const email = req.query.email;
     // Validate ObjectId
-    if (!id || !ObjectId.isValid(id)) {
+    // Validate ObjectId only if `id` is present
+    const isValidId = id && ObjectId.isValid(id);
+
+    if (!isValidId && !email) {
       return res.status(400).send({
-        message: "Invalid or missing user ID.",
+        message: "Invalid or missing user ID and email.",
       });
     }
 
     // Create filter for user
-    const userFilter = { _id: new ObjectId(id) };
+    const userFilter = {
+      $or: [
+        isValidId ? { _id: new ObjectId(id) } : null,
+        email ? { email: email } : null,
+      ].filter(Boolean), 
+    };
 
     // Fetch user from usersCollection
     const user = await usersCollection.findOne(userFilter);
@@ -367,7 +376,12 @@ router.get("/profile/:id", async (req, res) => {
     }
 
     // Fetch transactions from transactionCollection
-    const transactionFilter = { memberId: id };
+    const transactionFilter = {
+      $or: [
+        isValidId ? { memberId: id } : null,
+        email ? { memberEmail: email } : null,
+      ].filter(Boolean), 
+    };
     const transactions = await transactionsCollection
       .find(transactionFilter)
       .sort({ _id: -1 })
@@ -429,11 +443,9 @@ router.patch("/update-status/:id", async (req, res) => {
         });
       } catch (firebaseError) {
         console.error("Firebase update error:", firebaseError);
-        return res
-          .status(500)
-          .send({
-            error: `Failed to update Firebase user: ${firebaseError.message}`,
-          });
+        return res.status(500).send({
+          error: `Failed to update Firebase user: ${firebaseError.message}`,
+        });
       }
     }
 
