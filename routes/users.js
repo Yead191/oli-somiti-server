@@ -325,6 +325,7 @@ router.get("/", async (req, res) => {
           photo: 1,
           email: 1,
           role: 1,
+          isActive: 1,
           phoneNumber: 1,
           createdAt: 1,
           totalContributions: 1,
