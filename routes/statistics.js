@@ -87,6 +87,12 @@ router.get("/", async (req, res) => {
     });
     const adminCount = await userCollection.countDocuments({ role: "admin" });
     const memberCountFromUsers = await userCollection.countDocuments();
+    const activeMemberCount = await userCollection.countDocuments({
+      isActive: true,
+    });
+    const inactiveMemberCount = await userCollection.countDocuments({
+      isActive: false,
+    });
 
     // Use transaction-based member count if available, else fall back to userCollection
     const totalMembers =
@@ -104,6 +110,8 @@ router.get("/", async (req, res) => {
       totalDepositCount: totalDepositCount || 0,
       totalWithdrawalCount: totalWithdrawalCount || 0,
       totalPenaltyCount: totalPenaltyCount || 0,
+      activeMemberCount: activeMemberCount || 0,
+      inactiveMemberCount: inactiveMemberCount || 0,
     };
 
     res.send(result);

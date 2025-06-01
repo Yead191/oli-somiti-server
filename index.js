@@ -16,6 +16,7 @@ const corsOptions = {
     "http://localhost:3000",
     "http://localhost:5174",
     "http://localhost:4173",
+    "https://shopno-somiti.vercel.app"
   ],
   credentials: true,
   optionalSuccessStatus: 200,
